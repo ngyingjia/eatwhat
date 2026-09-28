@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>What's for lunch?</title>
+<style>
+:root{--bg:#fff4e0;--card:#fffaf0;--ink:#3b2416;--mute:#8a6a55;--line:#f0d9b5;--accent:#e8590c;--accent2:#f59f00;--chip:#ffe8c2;--ontext:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2a1a10;--card:#38241a;--ink:#ffeccc;--mute:#c9a98a;--line:#54382a;--chip:#4a2f21;--accent:#ff8a3d}}
+:root[data-theme="dark"]{--bg:#2a1a10;--card:#38241a;--ink:#ffeccc;--mute:#c9a98a;--line:#54382a;--chip:#4a2f21;--accent:#ff8a3d}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Fredoka","Trebuchet MS",system-ui,sans-serif;line-height:1.4}
+.app{max-width:480px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:30px;margin:4px 0 2px;letter-spacing:-.5px}
+.sub{color:var(--mute);margin:0 0 18px}
+.panel{background:var(--card);border:2px solid var(--line);border-radius:20px;padding:14px 16px;margin-bottom:14px}
+.lbl{font-weight:600;margin:0 0 8px;font-size:15px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chips:last-child{margin-bottom:0}
+.chip{border:2px solid transparent;background:var(--chip);color:var(--ink);font:inherit;font-size:14px;padding:6px 13px;border-radius:99px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--ontext)}
+button:focus-visible{outline:3px solid var(--accent2);outline-offset:2px}
+.row{display:flex;gap:10px;margin-top:4px}
+.btn{flex:1;font:inherit;font-weight:600;font-size:17px;border:0;border-radius:16px;padding:14px;cursor:pointer;background:var(--accent);color:var(--ontext)}
+.btn.alt{background:var(--chip);color:var(--ink)}
+.count{color:var(--mute);font-size:13px;margin:0 0 10px}
+.result{background:var(--card);border:3px solid var(--accent);border-radius:24px;padding:22px 18px;margin:16px 0;text-align:center}
+.emoji{font-size:54px;line-height:1}
+.result h2{margin:8px 0 4px;font-size:26px}
+.cuisine{display:inline-block;background:var(--chip);border-radius:99px;padding:2px 12px;font-size:13px;margin-bottom:8px}
+.result p{margin:6px 0 12px}
+.stats{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.stat{background:var(--chip);border-radius:14px;padding:8px 12px;font-weight:600;font-size:15px}
+.tags{margin-top:10px;font-size:13px;color:var(--mute)}
+.empty{text-align:center;color:var(--mute);padding:14px}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.hist li:last-child{border:0}
+.hist span{color:var(--mute);white-space:nowrap}
+@keyframes pop{from{transform:scale(.94);opacity:.4}to{transform:scale(1);opacity:1}}
+.pop{animation:pop .25s ease-out}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useMemo, useEffect } = React;
+
+// Static meal data: [name, cuisine, tags(v=vegetarian,h=halal,n=no seafood), price SGD, minutes, description]
+const RAW = [
+["Hainanese Chicken Rice","Chinese","n",5,15,"Silky poached chicken over fragrant rice with chilli and ginger."],
+["Char Siew Rice","Chinese","n",5.5,15,"Sticky-sweet roast pork on rice with a fried egg."],
+["Veggie Dumplings & Congee","Chinese","vn",6,20,"Warm rice porridge with pan-fried vegetable dumplings."],
+["Vegetarian Mapo Tofu Rice","Chinese","vn",7,20,"Silken tofu in a tingly, spicy bean sauce."],
+["Wanton Noodles","Chinese","n",5,15,"Springy egg noodles, char siew and crisp-edged wontons."],
+["Steamed Fish Set","Chinese","",9,30,"Light ginger-scallion steamed fish with rice and greens."],
+["Grilled Chicken Salad Bowl","Western","hn",12,15,"Greens, quinoa, grilled chicken and lemon dressing."],
+["Aglio Olio Pasta","Western","vn",11,25,"Garlic, chilli and olive oil tossed through spaghetti."],
+["Classic Cheeseburger","Western","n",13,20,"Juicy beef patty, cheddar and fries."],
+["Fish & Chips","Western","",12,25,"Beer-battered fish with chunky chips and tartar sauce."],
+["Caprese Panini","Western","vn",9,15,"Toasted ciabatta with mozzarella, tomato and basil."],
+["Chicken Caesar Wrap","Western","hn",8,10,"A grab-and-go wrap with crunchy romaine and parmesan."],
+["Salmon Don","Japanese","",14,20,"Fresh salmon slices over seasoned sushi rice."],
+["Chicken Katsu Curry","Japanese","n",11,25,"Crumbed chicken cutlet with mild Japanese curry."],
+["Vegetable Soba","Japanese","vn",9,20,"Chilled buckwheat noodles with a dipping sauce and veg tempura."],
+["Gyudon","Japanese","n",8,15,"Thin-sliced beef and onion simmered over rice."],
+["Inari & Edamame Set","Japanese","vn",6,10,"Sweet tofu pockets stuffed with rice, plus salted edamame."],
+["Chicken Biryani","Indian","hn",8,20,"Spiced basmati rice layered with tender chicken and raita."],
+["Paneer Butter Masala & Naan","Indian","vhn",10,25,"Creamy tomato curry with soft paneer and fluffy naan."],
+["Masala Dosai","Indian","vhn",6,20,"Crisp rice crepe with spiced potato and chutneys."],
+["Fish Head Curry","Indian","h",14,35,"Tangy, tamarind-rich curry with okra and brinjal."],
+["Chana Masala Thali","Indian","vhn",9,20,"Chickpea curry, dhal, rice and papadum on one plate."],
+["Nasi Lemak","Malay","hn",6,15,"Coconut rice, sambal, egg and a crispy fried chicken wing."],
+["Mee Goreng","Malay","hn",5,15,"Wok-fried yellow noodles with a sweet-spicy kick."],
+["Laksa","Malay","h",6,20,"Coconut curry noodle soup with prawns and cockles."],
+["Chicken Satay Set","Malay","hn",9,25,"Charcoal-grilled skewers with peanut sauce and ketupat."],
+["Thai Green Curry","Thai","n",10,25,"Fragrant coconut curry with chicken and Thai basil."],
+["Pad Thai","Thai","",10,20,"Tamarind-tossed rice noodles with prawn, egg and peanuts."],
+["Tom Yum Soup Set","Thai","",9,25,"Hot and sour prawn soup with steamed jasmine rice."],
+["Basil Tofu Rice","Thai","vn",8,20,"Stir-fried tofu with chilli and holy basil, topped with an egg."],
+["Bibimbap","Korean","n",11,20,"Rice bowl with sautéed veg, beef and gochujang."],
+["Kimchi Jjigae","Korean","n",10,25,"Bubbling kimchi stew with pork and tofu."],
+["Veggie Japchae","Korean","vn",10,20,"Chewy glass noodles with colourful vegetables."],
+["Kaya Toast Set","Local","vn",4.5,10,"Charcoal-toasted bread, kaya, butter and soft-boiled eggs."]
+];
+// Rough calorie estimates (kcal) for a typical single serving
+const CAL={"Hainanese Chicken Rice":600,"Char Siew Rice":620,"Veggie Dumplings & Congee":450,"Vegetarian Mapo Tofu Rice":580,"Wanton Noodles":480,"Steamed Fish Set":520,
+"Grilled Chicken Salad Bowl":420,"Aglio Olio Pasta":650,"Classic Cheeseburger":850,"Fish & Chips":900,"Caprese Panini":550,"Chicken Caesar Wrap":480,
+"Salmon Don":620,"Chicken Katsu Curry":900,"Vegetable Soba":450,"Gyudon":700,"Inari & Edamame Set":380,
+"Chicken Biryani":800,"Paneer Butter Masala & Naan":850,"Masala Dosai":400,"Fish Head Curry":550,"Chana Masala Thali":700,
+"Nasi Lemak":750,"Mee Goreng":700,"Laksa":590,"Chicken Satay Set":650,
+"Thai Green Curry":650,"Pad Thai":700,"Tom Yum Soup Set":450,"Basil Tofu Rice":600,
+"Bibimbap":560,"Kimchi Jjigae":500,"Veggie Japchae":450,"Kaya Toast Set":400};
+const MEALS = RAW.map(([name,cuisine,t,price,time,desc],i)=>({id:i,name,cuisine,price,time,desc,cal:CAL[name],
+  veg:t.includes("v"),halal:t.includes("h"),noSea:t.includes("n")}));
+const EMOJI={Chinese:"🥢",Western:"🍔",Japanese:"🍣",Indian:"🍛",Malay:"🍜",Thai:"🌶️",Korean:"🍲",Local:"🍞"};
+const CUISINES=[...new Set(MEALS.map(m=>m.cuisine))];
+const PRICES=[["Any price",0,99],["Under $8",0,7.99],["$8 – $12",8,12],["Over $12",12.01,99]];
+const TIMES=[["Any time",99],["15 min",15],["25 min",25]];
+const KEY="lunch-history-v1", WEEK=7*24*3600*1000;
+
+function loadHist(){
+  try{ const h=JSON.parse(localStorage.getItem(KEY)||"[]"); return h.filter(x=>Date.now()-x.ts<WEEK); }
+  catch(e){ return []; }
+}
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const day=ts=>new Date(ts).toLocaleDateString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"});
+
+function App(){
+  const [cuisines,setC]=useState([]);
+  const [diet,setD]=useState({veg:false,halal:false,noSea:false});
+  const [price,setP]=useState(0);
+  const [time,setT]=useState(0);
+  const [cur,setCur]=useState(null);
+  const [none,setNone]=useState(false);
+  const [hist,setHist]=useState(loadHist);
+
+  const matches=useMemo(()=>MEALS.filter(m=>{
+    const [,lo,hi]=PRICES[price];
+    return (!cuisines.length||cuisines.includes(m.cuisine))
+      && (!diet.veg||m.veg) && (!diet.halal||m.halal) && (!diet.noSea||m.noSea)
+      && m.price>=lo && m.price<=hi && m.time<=TIMES[time][1];
+  }),[cuisines,diet,price,time]);
+
+  useEffect(()=>{ setNone(false); },[cuisines,diet,price,time]);
+
+  const record=m=>{
+    const next=[{name:m.name,ts:Date.now()},...hist].filter(x=>Date.now()-x.ts<WEEK).slice(0,40);
+    setHist(next);
+    try{ localStorage.setItem(KEY,JSON.stringify(next)); }catch(e){}
+  };
+  const spin=(pool)=>{
+    if(!pool.length){ setCur(null); setNone(true); return; }
+    const opts=pool.length>1&&cur?pool.filter(m=>m.id!==cur.id):pool;
+    const m=pick(opts); setNone(false); setCur({...m,k:Math.random()}); record(m);
+  };
+  const toggleC=c=>setC(s=>s.includes(c)?s.filter(x=>x!==c):[...s,c]);
+  const toggleD=k=>setD(d=>({...d,[k]:!d[k]}));
+  const clearHist=()=>{ setHist([]); try{localStorage.removeItem(KEY);}catch(e){} };
+
+  return (
+    <div className="app">
+      <h1>What's for lunch? 🍱</h1>
+      <p className="sub">Pick what matters, then let fate choose.</p>
+
+      <div className="panel">
+        <p className="lbl">Cuisine (pick any, or none for all)</p>
+        <div className="chips">{CUISINES.map(c=>
+          <button key={c} className="chip" aria-pressed={cuisines.includes(c)} onClick={()=>toggleC(c)}>{EMOJI[c]} {c}</button>)}</div>
+        <p className="lbl">Dietary needs</p>
+        <div className="chips">{[["veg","Vegetarian"],["halal","Halal"],["noSea","No seafood"]].map(([k,l])=>
+          <button key={k} className="chip" aria-pressed={diet[k]} onClick={()=>toggleD(k)}>{l}</button>)}</div>
+        <p className="lbl">Budget per meal</p>
+        <div className="chips">{PRICES.map((p,i)=>
+          <button key={i} className="chip" aria-pressed={price===i} onClick={()=>setP(i)}>{p[0]}</button>)}</div>
+        <p className="lbl">Time for lunch (prep or travel)</p>
+        <div className="chips">{TIMES.map((t,i)=>
+          <button key={i} className="chip" aria-pressed={time===i} onClick={()=>setT(i)}>{t[0]}</button>)}</div>
+      </div>
+
+      <p className="count">{matches.length} of {MEALS.length} meals match</p>
+      <div className="row">
+        <button className="btn" onClick={()=>spin(matches)}>{cur?"Spin again":"Pick my lunch"}</button>
+        <button className="btn alt" onClick={()=>spin(MEALS)}>Surprise me 🎲</button>
+      </div>
+
+      {none && <div className="panel empty" style={{marginTop:16}}>Nothing matches those filters. Remove a cuisine, diet or budget choice and try again.</div>}
+
+      {cur && !none && (
+        <div className="result pop" key={cur.k}>
+          <div className="emoji">{EMOJI[cur.cuisine]}</div>
+          <h2>{cur.name}</h2>
+          <span className="cuisine">{cur.cuisine}</span>
+          <p>{cur.desc}</p>
+          <div className="stats">
+            <div className="stat">~${cur.price.toFixed(2)}</div>
+            <div className="stat">⏱ {cur.time} min</div>
+            <div className="stat">🔥 ~{cur.cal} kcal</div>
+          </div>
+          <div className="tags">{[cur.veg&&"Vegetarian",cur.halal&&"Halal-friendly",cur.noSea&&"No seafood"].filter(Boolean).join(", ")||"Contains seafood or meat"}</div>
+        </div>
+      )}
+
+      <div className="panel" style={{marginTop:16}}>
+        <p className="lbl">Past week ({hist.length})</p>
+        {hist.length===0
+          ? <div className="empty" style={{padding:6}}>Your suggestions will show up here.</div>
+          : <ul className="hist">{hist.slice(0,15).map((h,i)=><li key={i}>{h.name}<span>{day(h.ts)}</span></li>)}</ul>}
+        {hist.length>0 && <div className="row"><button className="btn alt" style={{fontSize:14,padding:8}} onClick={clearHist}>Clear history</button></div>}
+      </div>
+      <p className="sub" style={{textAlign:"center",fontSize:12}}>Prices (SGD) and calories are rough estimates for one serving. Check halal status with the stall.</p>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
